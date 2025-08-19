@@ -17,7 +17,7 @@ const app = express();
 app.use(helmet());
 app.use(
   cors({
-    origin:  ["https://banarasi-lehanga.vercel.app/" , "http://localhost:3000/"],
+    origin:  "*",
     credentials: true,
   })
 );
