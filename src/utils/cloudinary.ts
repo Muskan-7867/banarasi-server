@@ -38,6 +38,8 @@ const uploadMultipleImages = async (
   }
 };
 
+
+
 const deleteImage = async (publicId: string) => {
   try {
     const result = await cloudinary.uploader.destroy(publicId);

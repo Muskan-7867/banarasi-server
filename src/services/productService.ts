@@ -7,165 +7,6 @@ import {
 import { ConflictError, NotFoundError, ValidationError } from "../utils/errors";
 import fs from "fs";
 export class productService {
-  static async create(
-    data: ProductCreateRequest,
-    files?: Express.Multer.File[]
-  ): Promise<any> {
-    const {
-      name,
-      shortDescription,
-      detailedDescription,
-      price,
-      originalPrice,
-      discount,
-      tax,
-      categoryId,
-      subcategoryId,
-      qualityId,
-      colors,
-    } = data;
-
-    // Validate required fields
-    if (
-      !name ||
-      !shortDescription ||
-      !detailedDescription ||
-      !price ||
-      !originalPrice
-    ) {
-      throw new ValidationError("Missing required fields");
-    }
-
-    // Check if product with same name exists
-    const existingProduct = await prisma.product.findFirst({
-      where: { name },
-    });
-
-    if (existingProduct) {
-      throw new ConflictError("Product with this name already exists");
-    }
-
-    let uploadedImages: any[] = [];
-
-    // Upload images to Cloudinary if files are provided
-    if (files && files.length > 0) {
-      try {
-        const filePaths = files.map((file) => file.path);
-        uploadedImages = await uploadMultipleImages(filePaths, "products");
-      } catch (error) {
-        throw new Error("Failed to upload images to Cloudinary");
-      }
-    }
-
-    // Create product with transaction
-    const product = await prisma.$transaction(async (tx) => {
-      // Validate foreign key relationships
-      if (categoryId) {
-        const categoryExists = await tx.category.findUnique({
-          where: { id: categoryId },
-        });
-        if (!categoryExists) {
-          throw new ValidationError(`Category with ID ${categoryId} not found`);
-        }
-      }
-
-      if (subcategoryId) {
-        const subcategoryExists = await tx.subCategory.findUnique({
-          where: { id: subcategoryId },
-        });
-        if (!subcategoryExists) {
-          throw new ValidationError(
-            `Subcategory with ID ${subcategoryId} not found`
-          );
-        }
-      }
-
-      if (qualityId) {
-        const qualityExists = await tx.quality.findUnique({
-          where: { id: qualityId },
-        });
-        if (!qualityExists) {
-          throw new ValidationError(`Quality with ID ${qualityId} not found`);
-        }
-      }
-
-      // Create the product
-      const newProduct = await tx.product.create({
-        data: {
-          name,
-          shortDescription,
-          detailedDescription,
-          price: parseFloat(price.toString()),
-          originalPrice: parseFloat(originalPrice.toString()),
-          discount: discount ? parseFloat(discount.toString()) : 0,
-          tax: tax ? parseFloat(tax.toString()) : 0,
-          categoryId: categoryId || null,
-          subcategoryId: subcategoryId || null,
-          qualityId: qualityId || null,
-        },
-      });
-
-      // Create product images
-      if (uploadedImages.length > 0) {
-        const imageData = uploadedImages.map((image, index) => ({
-          productId: newProduct.id,
-          publicId: image.public_id,
-          url: image.secure_url,
-          rank: index + 1,
-        }));
-
-        await tx.productImage.createMany({
-          data: imageData,
-        });
-      }
-
-      // Connect colors if provided
-      if (colors && colors.length > 0) {
-        const colorIds = Array.isArray(colors) ? colors : [colors];
-
-        // Validate that all color IDs exist
-        const existingColors = await tx.color.findMany({
-          where: { id: { in: colorIds } },
-          select: { id: true },
-        });
-
-        const existingColorIds = existingColors.map((color) => color.id);
-        const invalidColorIds = colorIds.filter(
-          (id) => !existingColorIds.includes(id)
-        );
-
-        if (invalidColorIds.length > 0) {
-          throw new ValidationError(
-            `Invalid color IDs: ${invalidColorIds.join(", ")}`
-          );
-        }
-
-        await tx.product.update({
-          where: { id: newProduct.id },
-          data: {
-            colors: {
-              connect: colorIds.map((colorId) => ({ id: colorId })),
-            },
-          },
-        });
-      }
-
-      // Return product with relations
-      return await tx.product.findUnique({
-        where: { id: newProduct.id },
-        include: {
-          category: true,
-          subcategory: true,
-          quality: true,
-          colors: true,
-          images: true,
-        },
-      });
-    });
-
-    return product;
-  }
-
   // static async create(
   //   data: ProductCreateRequest,
   //   files?: Express.Multer.File[]
@@ -205,164 +46,308 @@ export class productService {
   //   }
 
   //   let uploadedImages: any[] = [];
-  //   const filePaths = files?.map((file) => file.path) || [];
 
-  //   try {
-  //     // Upload images to Cloudinary if files are provided
-  //     if (files && files.length > 0) {
+  //   // Upload images to Cloudinary if files are provided
+  //   if (files && files.length > 0) {
+  //     try {
+  //       const filePaths = files.map((file) => file.path);
   //       uploadedImages = await uploadMultipleImages(filePaths, "products");
+  //     } catch (error) {
+  //       throw new Error("Failed to upload images to Cloudinary");
+  //     }
+  //   }
+
+  //   // Create product with transaction
+  //   const product = await prisma.$transaction(async (tx) => {
+  //     // Validate foreign key relationships
+  //     if (categoryId) {
+  //       const categoryExists = await tx.category.findUnique({
+  //         where: { id: categoryId }
+  //       });
+  //       if (!categoryExists) {
+  //         throw new ValidationError(`Category with ID ${categoryId} not found`);
+  //       }
   //     }
 
-  //     // Create product with transaction
-  //     const product = await prisma.$transaction(async (tx) => {
-  //       // Validate foreign key relationships
-  //       if (categoryId) {
-  //         const categoryExists = await tx.category.findUnique({
-  //           where: { id: categoryId }
-  //         });
-  //         if (!categoryExists) {
-  //           throw new ValidationError(
-  //             `Category with ID ${categoryId} not found`
-  //           );
-  //         }
-  //       }
-
-  //       if (subcategoryId) {
-  //         const subcategoryExists = await tx.subCategory.findUnique({
-  //           where: { id: subcategoryId }
-  //         });
-  //         if (!subcategoryExists) {
-  //           throw new ValidationError(
-  //             `Subcategory with ID ${subcategoryId} not found`
-  //           );
-  //         }
-  //       }
-
-  //       if (qualityId) {
-  //         const qualityExists = await tx.quality.findUnique({
-  //           where: { id: qualityId }
-  //         });
-  //         if (!qualityExists) {
-  //           throw new ValidationError(`Quality with ID ${qualityId} not found`);
-  //         }
-  //       }
-
-  //       // Create the product
-  //       const newProduct = await tx.product.create({
-  //         data: {
-  //           name,
-  //           shortDescription,
-  //           detailedDescription,
-  //           price: parseFloat(price.toString()),
-  //           originalPrice: parseFloat(originalPrice.toString()),
-  //           discount: discount ? parseFloat(discount.toString()) : 0,
-  //           tax: tax ? parseFloat(tax.toString()) : 0,
-
-  //           categoryId: categoryId || null,
-  //           subcategoryId: subcategoryId || null,
-  //           qualityId: qualityId || null
-  //         }
+  //     if (subcategoryId) {
+  //       const subcategoryExists = await tx.subCategory.findUnique({
+  //         where: { id: subcategoryId }
   //       });
-
-  //       // Create product images
-  //       if (uploadedImages.length > 0) {
-  //         const imageData = uploadedImages.map((image, index) => ({
-  //           productId: newProduct.id,
-  //           publicId: image.public_id,
-  //           url: image.secure_url,
-  //           rank: index + 1
-  //         }));
-
-  //         await tx.productImage.createMany({
-  //           data: imageData
-  //         });
-  //       }
-
-  //       // Update category's products array if category is provided
-  //       if (categoryId) {
-  //         await tx.category.update({
-  //           where: { id: categoryId },
-  //           data: {
-  //             Product: {
-  //               connect: { id: newProduct.id }
-  //             }
-  //           }
-  //         });
-  //       }
-
-  //       // Connect colors if provided
-  //       if (colors && colors.length > 0) {
-  //         const colorIds = Array.isArray(colors) ? colors : [colors];
-
-  //         // Validate that all color IDs exist
-  //         const existingColors = await tx.color.findMany({
-  //           where: { id: { in: colorIds } },
-  //           select: { id: true }
-  //         });
-
-  //         const existingColorIds = existingColors.map((color) => color.id);
-  //         const invalidColorIds = colorIds.filter(
-  //           (id) => !existingColorIds.includes(id)
+  //       if (!subcategoryExists) {
+  //         throw new ValidationError(
+  //           `Subcategory with ID ${subcategoryId} not found`
   //         );
-
-  //         if (invalidColorIds.length > 0) {
-  //           throw new ValidationError(
-  //             `Invalid color IDs: ${invalidColorIds.join(", ")}`
-  //           );
-  //         }
-
-  //         await tx.product.update({
-  //           where: { id: newProduct.id },
-  //           data: {
-  //             colors: {
-  //               connect: colorIds.map((colorId) => ({ id: colorId }))
-  //             }
-  //           }
-  //         });
   //       }
+  //     }
 
-  //       // Return product with relations
-  //       return await tx.product.findUnique({
-  //         where: { id: newProduct.id },
-  //         include: {
-  //           category: true,
-  //           subcategory: true,
-  //           quality: true,
-  //           colors: true,
-  //           images: true
-  //         }
+  //     if (qualityId) {
+  //       const qualityExists = await tx.quality.findUnique({
+  //         where: { id: qualityId }
   //       });
+  //       if (!qualityExists) {
+  //         throw new ValidationError(`Quality with ID ${qualityId} not found`);
+  //       }
+  //     }
+
+  //     // Create the product
+  //     const newProduct = await tx.product.create({
+  //       data: {
+  //         name,
+  //         shortDescription,
+  //         detailedDescription,
+  //         price: parseFloat(price.toString()),
+  //         originalPrice: parseFloat(originalPrice.toString()),
+  //         discount: discount ? parseFloat(discount.toString()) : 0,
+  //         tax: tax ? parseFloat(tax.toString()) : 0,
+  //         categoryId: categoryId || null,
+  //         subcategoryId: subcategoryId || null,
+  //         qualityId: qualityId || null
+  //       }
   //     });
 
-  //     return product;
-  //   } catch (error) {
-  //     // Clean up uploaded images if product creation fails
+  //     // Create product images
   //     if (uploadedImages.length > 0) {
-  //       await deleteMultipleImages(uploadedImages.map((img) => img.public_id));
+  //       const imageData = uploadedImages.map((image, index) => ({
+  //         productId: newProduct.id,
+  //         publicId: image.public_id,
+  //         url: image.secure_url,
+  //         rank: index + 1
+  //       }));
+
+  //       await tx.productImage.createMany({
+  //         data: imageData
+  //       });
   //     }
-  //     throw error;
-  //   } finally {
-  //     // Clean up temp files
-  //     this.cleanupTempFiles(filePaths);
-  //   }
-  // }
 
-  // private static cleanupTempFiles(filePaths: string[]) {
-  //   if (!filePaths) return;
+  //     // Connect colors if provided
+  //     if (colors && colors.length > 0) {
+  //       const colorIds = Array.isArray(colors) ? colors : [colors];
 
-  //   for (const filePath of filePaths) {
-  //     try {
-  //       if (fs.existsSync(filePath)) {
-  //         fs.unlinkSync(filePath);
+  //       // Validate that all color IDs exist
+  //       const existingColors = await tx.color.findMany({
+  //         where: { id: { in: colorIds } },
+  //         select: { id: true }
+  //       });
+
+  //       const existingColorIds = existingColors.map((color) => color.id);
+  //       const invalidColorIds = colorIds.filter(
+  //         (id) => !existingColorIds.includes(id)
+  //       );
+
+  //       if (invalidColorIds.length > 0) {
+  //         throw new ValidationError(
+  //           `Invalid color IDs: ${invalidColorIds.join(", ")}`
+  //         );
   //       }
-  //     } catch (error) {
-  //       console.error(`Error deleting temporary file ${filePath}:`, error);
-  //     }
-  //   }
-  // }
 
-  static async getAll() {
+  //       await tx.product.update({
+  //         where: { id: newProduct.id },
+  //         data: {
+  //           colors: {
+  //             connect: colorIds.map((colorId) => ({ id: colorId }))
+  //           }
+  //         }
+  //       });
+  //     }
+
+  //     // Return product with relations
+  //     return await tx.product.findUnique({
+  //       where: { id: newProduct.id },
+  //       include: {
+  //         category: true,
+  //         subcategory: true,
+  //         quality: true,
+  //         colors: true,
+  //         images: true
+  //       }
+  //     });
+  //   });
+
+  //   return product;
+  // }
+  static async create(
+    data: ProductCreateRequest,
+    files?: Express.Multer.File[]
+  ): Promise<any> {
+    const {
+      name,
+      shortDescription,
+      detailedDescription,
+      price,
+      originalPrice,
+      discount,
+      tax,
+      categoryId,
+      subcategoryId,
+      qualityId,
+      colors,
+      tag // Add tag field
+    } = data;
+
+    // Validate required fields
+    if (
+      !name ||
+      !shortDescription ||
+      !detailedDescription ||
+      !price ||
+      !originalPrice
+    ) {
+      throw new ValidationError("Missing required fields");
+    }
+
+    // Check if product with same name exists
+    const existingProduct = await prisma.product.findFirst({
+      where: { name }
+    });
+
+    if (existingProduct) {
+      throw new ConflictError("Product with this name already exists");
+    }
+
+    let uploadedImages: any[] = [];
+
+    // Upload images to Cloudinary if files are provided
+    if (files && files.length > 0) {
+      try {
+        const filePaths = files.map((file) => file.path);
+        uploadedImages = await uploadMultipleImages(filePaths, "products");
+      } catch (error) {
+        throw new Error("Failed to upload images to Cloudinary");
+      }
+    }
+
+    // Create product with transaction
+    const product = await prisma.$transaction(async (tx) => {
+      // Validate foreign key relationships
+      if (categoryId) {
+        const categoryExists = await tx.category.findUnique({
+          where: { id: categoryId }
+        });
+        if (!categoryExists) {
+          throw new ValidationError(`Category with ID ${categoryId} not found`);
+        }
+      }
+
+      if (subcategoryId) {
+        const subcategoryExists = await tx.subCategory.findUnique({
+          where: { id: subcategoryId }
+        });
+        if (!subcategoryExists) {
+          throw new ValidationError(
+            `Subcategory with ID ${subcategoryId} not found`
+          );
+        }
+      }
+
+      if (qualityId) {
+        const qualityExists = await tx.quality.findUnique({
+          where: { id: qualityId }
+        });
+        if (!qualityExists) {
+          throw new ValidationError(`Quality with ID ${qualityId} not found`);
+        }
+      }
+
+      // Create the product
+      const newProduct = await tx.product.create({
+        data: {
+          name,
+          shortDescription,
+          detailedDescription,
+          price: parseFloat(price.toString()),
+          originalPrice: parseFloat(originalPrice.toString()),
+          discount: discount ? parseFloat(discount.toString()) : 0,
+          tax: tax ? parseFloat(tax.toString()) : 0,
+          categoryId: categoryId || null,
+          subcategoryId: subcategoryId || null,
+          qualityId: qualityId || null,
+          tag: tag 
+        }
+      });
+
+      // Create product images
+      if (uploadedImages.length > 0) {
+        const imageData = uploadedImages.map((image, index) => ({
+          productId: newProduct.id,
+          publicId: image.public_id,
+          url: image.secure_url,
+          rank: index + 1
+        }));
+
+        await tx.productImage.createMany({
+          data: imageData
+        });
+      }
+
+      // Connect colors if provided
+      if (colors && colors.length > 0) {
+        const colorIds = Array.isArray(colors) ? colors : [colors];
+
+        // Validate that all color IDs exist
+        const existingColors = await tx.color.findMany({
+          where: { id: { in: colorIds } },
+          select: { id: true }
+        });
+
+        const existingColorIds = existingColors.map((color) => color.id);
+        const invalidColorIds = colorIds.filter(
+          (id) => !existingColorIds.includes(id)
+        );
+
+        if (invalidColorIds.length > 0) {
+          throw new ValidationError(
+            `Invalid color IDs: ${invalidColorIds.join(", ")}`
+          );
+        }
+
+        await tx.product.update({
+          where: { id: newProduct.id },
+          data: {
+            colors: {
+              connect: colorIds.map((colorId) => ({ id: colorId }))
+            }
+          }
+        });
+      }
+
+      // Return product with relations
+      return await tx.product.findUnique({
+        where: { id: newProduct.id },
+        include: {
+          category: true,
+          subcategory: true,
+          quality: true,
+          colors: true,
+          images: true,
+        }
+      });
+    });
+
+    return product;
+  }
+
+static async getAll() {
+  const products = await prisma.product.findMany({
+    include: {
+      category: true,
+      subcategory: true,
+      quality: true,
+      colors: true,
+      images: {
+        orderBy: { rank: "asc" }
+      },
+    }
+  });
+  return products;
+}
+
+  static async getByTag(tag: string) {
+    if (!tag) {
+      throw new Error("Tag is required");
+    }
+
     const products = await prisma.product.findMany({
+      where: { tag },
       include: {
         category: true,
         subcategory: true,
@@ -373,9 +358,10 @@ export class productService {
         }
       }
     });
+
     return products;
   }
-
+  
   static async getById(id: string) {
     const product = await prisma.product.findUnique({
       where: { id },

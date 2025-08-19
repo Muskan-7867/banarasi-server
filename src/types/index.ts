@@ -30,6 +30,8 @@ export interface SizeCreateRequest {
 }
 export interface categoryCreateRequest {
   name: string;
+
+
 }
 export interface SubCategoryCreateRequest {
   name: string;
@@ -229,6 +231,7 @@ export interface ProductCreateRequest {
   qualityId?: string;
   colors: string[];
   images: string[];
+  tag: string 
 }
 
 export interface MulterRequest<P = any> extends Request<P> {

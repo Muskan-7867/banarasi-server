@@ -38,6 +38,28 @@ export class productController {
     }
   }
 
+static async getProductByTag(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const { tag } = req.params; 
+    const products = await productService.getByTag(tag);
+
+    if (!products || products.length === 0) {
+      return res
+        .status(404)
+        .json({ message: `No products found for tag: ${tag}` });
+    }
+
+    return res.status(200).json(products);
+  } catch (error) {
+    return next(error);
+  }
+}
+
+
   static async getAll(
     req: Request,
     res: Response,
