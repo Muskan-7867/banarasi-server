@@ -435,7 +435,8 @@ static async getAll() {
           ...(data.subcategoryId !== undefined && {
             subcategoryId: data.subcategoryId
           }),
-          ...(data.qualityId !== undefined && { qualityId: data.qualityId })
+          ...(data.qualityId !== undefined && { qualityId: data.qualityId }),
+           ...(data.tag !== undefined && { tag: data.tag })
         }
       });
 
