@@ -66,7 +66,15 @@ static async getProductByTag(
     next: NextFunction
   ): Promise<void> {
     try {
-      const result = await productService.getAll();
+      const { category, search, page, limit } = req.query;
+      
+      const result = await productService.getAll(
+        category as string,
+        search as string,
+        page ? parseInt(page as string) : undefined,
+        limit ? parseInt(limit as string) : undefined
+      );
+      
       ApiResponseUtil.success(res, "Products retrieved successfully", result);
     } catch (error) {
       next(error);
@@ -135,4 +143,6 @@ static async getProductByTag(
       next(error);
     }
   }
+
+
 }

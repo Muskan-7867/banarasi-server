@@ -261,7 +261,7 @@ export class productService {
           categoryId: categoryId || null,
           subcategoryId: subcategoryId || null,
           qualityId: qualityId || null,
-          tag: tag 
+          tag: tag
         }
       });
 
@@ -318,7 +318,7 @@ export class productService {
           subcategory: true,
           quality: true,
           colors: true,
-          images: true,
+          images: true
         }
       });
     });
@@ -326,20 +326,75 @@ export class productService {
     return product;
   }
 
-static async getAll() {
-  const products = await prisma.product.findMany({
-    include: {
-      category: true,
-      subcategory: true,
-      quality: true,
-      colors: true,
-      images: {
-        orderBy: { rank: "asc" }
+  // static async getAll() {
+  //   const products = await prisma.product.findMany({
+  //     include: {
+  //       category: true,
+  //       subcategory: true,
+  //       quality: true,
+  //       colors: true,
+  //       images: {
+  //         orderBy: { rank: "asc" }
+  //       }
+  //     }
+  //   });
+  //   return products;
+  // }
+static async getAll(category?: string, search?: string, page?: number, limit?: number) {
+  const where: any = {};
+
+  if (category) {
+    where.categoryId = category;
+  }
+  
+  if (search) {
+    // For case-insensitive search, use a raw SQL query or modify the search term
+    // Option 1: Use raw SQL (if using PostgreSQL)
+    // where.name = {
+    //   contains: search,
+    //   mode: 'insensitive'
+    // };
+    
+    // Option 2: Use a simple contains (case-sensitive)
+    where.name = { contains: search };
+    
+    // Option 3: For better case-insensitive search, consider using a raw query
+    // This depends on your database
+  }
+
+  // Set default values for pagination
+  const pageNumber = page || 1;
+  const pageSize = limit || 10; // Default to 10 products per page
+  
+  const skip = (pageNumber - 1) * pageSize;
+  const take = pageSize;
+
+  const [products, count] = await Promise.all([
+    prisma.product.findMany({
+      where,
+      skip,
+      take,
+      include: {
+        category: true,
+        subcategory: true,
+        quality: true,
+        colors: true,
+        images: { orderBy: { rank: "asc" } }
       },
-    }
-  });
-  return products;
+      orderBy: { createdAt: "desc" }
+    }),
+    prisma.product.count({ where })
+  ]);
+
+  return { 
+    products, 
+    count,
+    totalPages: Math.ceil(count / pageSize),
+    currentPage: pageNumber,
+    pageSize
+  };
 }
+
 
   static async getByTag(tag: string) {
     if (!tag) {
@@ -361,7 +416,7 @@ static async getAll() {
 
     return products;
   }
-  
+
   static async getById(id: string) {
     const product = await prisma.product.findUnique({
       where: { id },
@@ -436,7 +491,7 @@ static async getAll() {
             subcategoryId: data.subcategoryId
           }),
           ...(data.qualityId !== undefined && { qualityId: data.qualityId }),
-           ...(data.tag !== undefined && { tag: data.tag })
+          ...(data.tag !== undefined && { tag: data.tag })
         }
       });
 
@@ -537,4 +592,6 @@ static async getAll() {
       where: { id }
     });
   }
+
+ 
 }

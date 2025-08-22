@@ -12,4 +12,5 @@ router.put("/:id", upload.array("images", 10), productController.update);
 router.delete("/:id", productController.delete);
 router.get("/tag/:tag", productController.getProductByTag)
 
+
 export default router;
