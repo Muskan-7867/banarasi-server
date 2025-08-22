@@ -3,6 +3,7 @@ import { ApiResponseUtil } from "../utils/apiResponse";
 import { productService } from "../services/productService";
 import { MulterRequest } from "../types";
 import fs from "fs";
+import { ValidationError } from "../utils/errors"
 
 export class productController {
   static async create(
@@ -38,7 +39,7 @@ export class productController {
     }
   }
 
-static async getProductByTag(
+ static async getProductByTag(
   req: Request,
   res: Response,
   next: NextFunction
@@ -59,7 +60,6 @@ static async getProductByTag(
   }
 }
 
-
   static async getAll(
     req: Request,
     res: Response,
@@ -67,14 +67,14 @@ static async getProductByTag(
   ): Promise<void> {
     try {
       const { category, search, page, limit } = req.query;
-      
+
       const result = await productService.getAll(
         category as string,
         search as string,
         page ? parseInt(page as string) : undefined,
         limit ? parseInt(limit as string) : undefined
       );
-      
+
       ApiResponseUtil.success(res, "Products retrieved successfully", result);
     } catch (error) {
       next(error);
@@ -143,6 +143,4 @@ static async getProductByTag(
       next(error);
     }
   }
-
-
 }
