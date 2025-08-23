@@ -23,10 +23,9 @@ export class productService {
       subcategoryId,
       qualityId,
       colors,
-      tag // Add tag field
+      tag
     } = data;
 
-    // Validate required fields
     if (
       !name ||
       !shortDescription ||
@@ -168,6 +167,26 @@ export class productService {
     return product;
   }
 
+ static async getCartProductsByIds(ids: string[]) {
+    if (!ids || !Array.isArray(ids)) {
+      throw new Error("IDs must be provided as an array");
+    }
+
+    const products = await prisma.product.findMany({
+      where: {
+        id: { in: ids },
+      },
+      include: {
+        category: true,
+        subcategory: true,
+        quality: true,
+        colors: true,
+        images: true,
+      },
+    });
+
+    return products;
+  }
   static async getAll(
     category?: string,
     search?: string,
@@ -217,7 +236,7 @@ export class productService {
     };
   }
 
-    static async getByTag(tag: string) {
+  static async getByTag(tag: string) {
     if (!tag) {
       throw new Error("Tag is required");
     }
@@ -233,13 +252,11 @@ export class productService {
           orderBy: { rank: "asc" }
         }
       },
-       orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" }
     });
 
     return products;
   }
-
-
 
   static async getById(id: string) {
     const product = await prisma.product.findUnique({

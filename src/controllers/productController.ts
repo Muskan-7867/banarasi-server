@@ -60,6 +60,31 @@ export class productController {
   }
 }
 
+static async getCartProducts(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const { ids } = req.body;
+
+      if (!ids || !Array.isArray(ids)) {
+        res.status(400).json({ message: "IDs must be provided as an array" });
+        return;
+      }
+
+      const products = await productService.getCartProductsByIds(ids);
+
+      res.status(200).json({
+        products,
+        message: "Products fetched successfully",
+      });
+    } catch (error) {
+      console.error("Error fetching cart products:", error);
+      next(error); // forward to error middleware
+    }
+  }
+
   static async getAll(
     req: Request,
     res: Response,
