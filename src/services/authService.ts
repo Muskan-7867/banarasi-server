@@ -141,7 +141,9 @@ export class AuthService {
     const token = JwtUtil.generateToken({
       userId: admin.id,
       email: admin.email,
-      role: admin.role
+      role: admin.role,
+      username: admin.username,
+  
     });
 
     return {
@@ -149,14 +151,15 @@ export class AuthService {
         id: admin.id,
         email: admin.email,
         username: admin.username,
-        phone: admin.phone
+        phone: admin.phone,
+        role: admin.role,
       },
       token
     };
   }
 
   static async loginAdmin(data: LoginRequest): Promise<AuthResponse> {
-    const { email, password , username} = data;
+    const { email, password } = data;
 
     const admin = await prisma.user.findUnique({ where: { email } });
     if (!admin) throw new NotFoundError("Admin not found");
@@ -170,7 +173,7 @@ export class AuthService {
     const token = JwtUtil.generateToken({
       userId: admin.id,
       email: admin.email,
-      username: admin.username,
+      
       role: admin.role
     });
 
@@ -179,7 +182,8 @@ export class AuthService {
         id: admin.id,
         email: admin.email,
         username: admin.username,
-        phone: admin.phone
+        phone: admin.phone,
+        role: admin.role
       },
       token
     };
