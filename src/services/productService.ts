@@ -6,136 +6,153 @@ import {
   uploadFile
 } from "../utils/cloudinary";
 import { ConflictError, NotFoundError, ValidationError } from "../utils/errors";
-
+import fs from "fs/promises";
 
 export class productService {
-  static async create(
-    data: ProductCreateRequest,
-    files?: Express.Multer.File[]
-  ): Promise<any> {
-    const {
-      name,
-      shortDescription,
-      detailedDescription,
-      price,
-      originalPrice,
-      discount,
-      tax,
-      categoryName,
-      subcategoryName,
-      qualityName,
-      sizeName,
-      colors,
-      tag
-    } = data;
 
-    if (
-      !name ||
-      !shortDescription ||
-      !detailedDescription ||
-      price === undefined ||
-      originalPrice === undefined
-    ) {
-      throw new ValidationError("Missing required fields");
-    }
 
-    const existingProduct = await prisma.product.findFirst({ where: { name } });
-    if (existingProduct)
-      throw new ConflictError("Product with this name already exists");
+static async create(
+  data: ProductCreateRequest,
+  files?: Express.Multer.File[]
+): Promise<any> {
+  const {
+    name,
+    shortDescription,
+    detailedDescription,
+    price,
+    originalPrice,
+    discount,
+    tax,
+    categoryName,
+    subcategoryName,
+    qualityName,
+    sizeName,
+    colors,
+    tag
+  } = data;
 
-    const imageFiles =
-      files?.filter((f) => f.mimetype.startsWith("image/")) || [];
-    const videoFile =
-      files?.find((f) => f.mimetype.startsWith("video/")) || null;
+  if (
+    !name ||
+    !shortDescription ||
+    !detailedDescription ||
+    price === undefined ||
+    originalPrice === undefined
+  ) {
+    throw new ValidationError("Missing required fields");
+  }
 
-    let uploadedImages: { public_id: string; secure_url: string }[] = [];
+  const existingProduct = await prisma.product.findFirst({ where: { name } });
+  if (existingProduct)
+    throw new ConflictError("Product with this name already exists");
+
+  const imageFiles = files?.filter((f) => f.mimetype.startsWith("image/")) || [];
+  const videoFile = files?.find((f) => f.mimetype.startsWith("video/")) || null;
+
+  let uploadedImages: { public_id: string; secure_url: string }[] = [];
+  let uploadedVideo: { public_id: string; secure_url: string } | null = null;
+
+  try {
+    // Upload images
     if (imageFiles.length) {
       const filePaths = imageFiles.map((f) => f.path);
       uploadedImages = await uploadMultipleFiles(filePaths, "products");
+
+      // Clean temp files
+      await Promise.all(filePaths.map((path) => fs.unlink(path)));
     }
 
-    let uploadedVideo: { public_id: string; secure_url: string } | null = null;
-    if (videoFile) uploadedVideo = await uploadFile(videoFile.path, "products");
+    // Upload video
+    if (videoFile) {
+      uploadedVideo = await uploadFile(videoFile.path, "products");
 
-    return await prisma.$transaction(async (tx) => {
-      const newProduct = await tx.product.create({
-        data: {
-          name,
-          shortDescription,
-          detailedDescription,
-          price: Number(price),
-          originalPrice: Number(originalPrice),
-          discount: discount ? Number(discount) : 0,
-          tax: tax ? Number(tax) : 0,
-          categoryName: categoryName || null,
-          subcategoryName: subcategoryName || null,
-          qualityName: qualityName || null,
-          sizeName: sizeName || null,
-          tag
-        }
-      });
-
-      if (uploadedImages.length > 0) {
-        await tx.productImage.createMany({
-          data: uploadedImages.map((img, idx) => ({
-            productId: newProduct.id,
-            publicId: img.public_id,
-            url: img.secure_url,
-            rank: idx + 1
-          }))
-        });
-      }
-
-      if (uploadedVideo) {
-        await tx.productVideo.create({
-          data: {
-            productId: newProduct.id,
-            publicId: uploadedVideo.public_id,
-            url: uploadedVideo.secure_url
-            // Remove rank field since it doesn't exist in ProductVideo model
-          }
-        });
-      }
-
-      if (colors?.length) {
-        const colorList = (Array.isArray(colors) ? colors : [colors]).map((c) =>
-          c.includes(",") ? c.split(",")[1].trim() : c.trim()
-        );
-
-        const existingColors = await tx.color.findMany({
-          where: { name: { in: colorList } }
-        });
-        const existingNames = existingColors.map((c) => c.name);
-        const missingNames = colorList.filter(
-          (n) => !existingNames.includes(n)
-        );
-
-        if (missingNames.length > 0) {
-          const newColors = await Promise.all(
-            missingNames.map((name) => tx.color.create({ data: { name } }))
-          );
-          existingColors.push(...newColors);
-        }
-
-        await tx.product.update({
-          where: { id: newProduct.id },
-          data: {
-            colors: { connect: existingColors.map((c) => ({ id: c.id })) }
-          }
-        });
-      }
-
-      // Return product with images and videos
-      return tx.product.findUnique({
-        where: { id: newProduct.id },
-        include: {
-          colors: true,
-          images: { orderBy: { rank: "asc" } },
-          videos: true // Use createdAt instead of rank
-        }
-      });
-    });
+      // Clean temp file
+      await fs.unlink(videoFile.path);
+    }
+  } catch (err) {
+    // In case upload fails, try to cleanup temp files
+    await Promise.allSettled([
+      ...(imageFiles || []).map((f) => fs.unlink(f.path)),
+      videoFile ? fs.unlink(videoFile.path) : Promise.resolve()
+    ]);
+    throw err;
   }
+
+  return await prisma.$transaction(async (tx) => {
+    const newProduct = await tx.product.create({
+      data: {
+        name,
+        shortDescription,
+        detailedDescription,
+        price: Number(price),
+        originalPrice: Number(originalPrice),
+        discount: discount ? Number(discount) : 0,
+        tax: tax ? Number(tax) : 0,
+        categoryName: categoryName || null,
+        subcategoryName: subcategoryName || null,
+        qualityName: qualityName || null,
+        sizeName: sizeName || null,
+        tag
+      }
+    });
+
+    if (uploadedImages.length > 0) {
+      await tx.productImage.createMany({
+        data: uploadedImages.map((img, idx) => ({
+          productId: newProduct.id,
+          publicId: img.public_id,
+          url: img.secure_url,
+          rank: idx + 1
+        }))
+      });
+    }
+
+    if (uploadedVideo) {
+      await tx.productVideo.create({
+        data: {
+          productId: newProduct.id,
+          publicId: uploadedVideo.public_id,
+          url: uploadedVideo.secure_url
+        }
+      });
+    }
+
+    if (colors?.length) {
+      const colorList = (Array.isArray(colors) ? colors : [colors]).map((c) =>
+        c.includes(",") ? c.split(",")[1].trim() : c.trim()
+      );
+
+      const existingColors = await tx.color.findMany({
+        where: { name: { in: colorList } }
+      });
+      const existingNames = existingColors.map((c) => c.name);
+      const missingNames = colorList.filter((n) => !existingNames.includes(n));
+
+      if (missingNames.length > 0) {
+        const newColors = await Promise.all(
+          missingNames.map((name) => tx.color.create({ data: { name } }))
+        );
+        existingColors.push(...newColors);
+      }
+
+      await tx.product.update({
+        where: { id: newProduct.id },
+        data: {
+          colors: { connect: existingColors.map((c) => ({ id: c.id })) }
+        }
+      });
+    }
+
+    return tx.product.findUnique({
+      where: { id: newProduct.id },
+      include: {
+        colors: true,
+        images: { orderBy: { rank: "asc" } },
+        videos: true
+      }
+    });
+  });
+}
+
 
   static async getByTag(
     tag: string,
