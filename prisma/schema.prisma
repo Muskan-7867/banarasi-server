@@ -1,218 +1,223 @@
 generator client {
-    provider      = "prisma-client-js"
-    binaryTargets = ["native", "debian-openssl-1.1.x"]
+  provider      = "prisma-client-js"
+
 }
 
 datasource db {
-    provider = "mysql"
-    url      = env("DATABASE_URL")
+  provider = "mysql"
+  url      = env("DATABASE_URL")
 }
 
 // Enums
-
 enum Role {
-    ADMIN
-    USER
+  ADMIN
+  USER
 }
 
 enum OrderStatus {
-    pending
-    processing
-    delivered
-    cancelled
+  pending
+  processing
+  delivered
+  cancelled
 }
 
 enum PaymentMethod {
-    cash_on_delivery
-    online
+  cash_on_delivery
+  online
 }
 
 enum PaymentStatus {
-    Pending
-    Success
-    Failed
+  Pending
+  Success
+  Failed
 }
 
+// Models
 model User {
-    id                  String    @id @default(uuid())
-    username            String    @unique @db.VarChar(255)
-    email               String    @unique @db.VarChar(255)
-    phone               String    @unique
-    password            String    @db.VarChar(255)
-    role                Role      @default(USER)
-    address             Address[]
-    addressId           Int?
-    orders              Order[]
-    resetPasswordToken  String?   @db.VarChar(255)
-    resetPasswordExpire DateTime?
-    createdAt           DateTime  @default(now())
-    updatedAt           DateTime  @updatedAt
-    Payment             Payment[]
+  id                  String    @id @default(uuid())
+  username            String    @unique @db.VarChar(255)
+  email               String    @unique @db.VarChar(255)
+  phone               String    @unique
+  password            String    @db.VarChar(255)
+  role                Role      @default(USER)
+  address             Address[]
+  orders              Order[]
+  Payment             Payment[]
+  resetPasswordToken  String?   @db.VarChar(255)
+  resetPasswordExpire DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-    @@index([email])
-    @@index([username])
+  @@index([email])
+  @@index([username])
 }
 
 model Address {
-    id      String  @id @default(cuid())
-    street  String? @db.VarChar(255)
-    city    String? @db.VarChar(255)
-    state   String? @db.VarChar(255)
-    zipCode String? @db.VarChar(20)
-    country String? @db.VarChar(100)
-    user    User?   @relation(fields: [userId], references: [id])
-    userId  String?
-    Order   Order[]
+  id      String  @id @default(cuid())
+  street  String? @db.VarChar(255)
+  city    String? @db.VarChar(255)
+  state   String? @db.VarChar(255)
+  zipCode String? @db.VarChar(20)
+  country String? @db.VarChar(100)
+  userId  String?
+  user    User?   @relation(fields: [userId], references: [id])
+  Order   Order[]
 }
 
 model Order {
-    id                   String         @id @default(uuid())
-    quantity             Int?
-    clientId             String?
-    client               User?          @relation(fields: [clientId], references: [id])
-    addressId            String
-    address              Address        @relation(fields: [addressId], references: [id])
-    totalPrice           Float
-    totalQuantity        Int
-    deliveryCharges      Float          @default(0)
-    status               OrderStatus?
-    paymentMethod        PaymentMethod?
-    expectedDeliveryDate DateTime?
-    isPaid               Boolean        @default(false)
+  id                   String         @id @default(uuid())
+  clientId             String?
+  client               User?          @relation(fields: [clientId], references: [id])
+  addressId            String
+  address              Address        @relation(fields: [addressId], references: [id])
+  totalPrice           Float
+  totalQuantity        Int
+  deliveryCharges      Float          @default(0)
+  status               OrderStatus?
+  paymentMethod        PaymentMethod?
+  expectedDeliveryDate DateTime?
+  isPaid               Boolean        @default(false)
 
-    razorpayOrderId   String?       @map("razorpay_order_id")
-    razorpayPaymentId String?       @map("razorpay_payment_id")
-    razorpaySignature String?       @map("razorpay_signature")
-    paymentStatus     PaymentStatus @default(Pending)
+  razorpayOrderId   String?       @map("razorpay_order_id")
+  razorpayPaymentId String?       @map("razorpay_payment_id")
+  razorpaySignature String?       @map("razorpay_signature")
+  paymentStatus     PaymentStatus @default(Pending)
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    orderItems OrderItem[]
-    Payment    Payment[]
+  orderItems OrderItem[]
+  Payment    Payment[]
 }
 
 model OrderItem {
-    id        String  @id @default(uuid())
-    orderId   String
-    order     Order   @relation(fields: [orderId], references: [id])
-    productId String
-    product   Product @relation(fields: [productId], references: [id])
-    price     Float
-    quantity  Int
+  id        String @id @default(uuid())
+  orderId   String
+  order     Order  @relation(fields: [orderId], references: [id])
+  productId String
 
-    @@index([productId])
+  price    Float
+  quantity Int
+
+  @@index([productId])
 }
 
 model Product {
-    id                  String @id @default(cuid())
-    name                String
-    shortDescription    String
-    detailedDescription String
-    price               Float
-    originalPrice       Float
-    discount            Float
-    tax                 Float
+  id                  String   @id @default(uuid())
+  name                String
+  shortDescription    String
+  detailedDescription String @db.LongText
+  price               Float
+  originalPrice       Float
+  discount            Float?
+  tax                 Float?
+  tag                 String?
 
-    categoryId String?
-    category   Category? @relation(fields: [categoryId], references: [id])
+  categoryName        String?
+  subcategoryName     String?
+  qualityName         String?
+  sizeName            String?
 
-    subcategoryId String?
-    subcategory   SubCategory? @relation(fields: [subcategoryId], references: [id])
 
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
   
-    qualityId String?
-    quality   Quality? @relation(fields: [qualityId], references: [id])
+  colors              Color[]  @relation("ProductColors")
+  images              ProductImage[]
 
-    colors Color[]
+  videos    ProductVideo[]
+}
 
-    images ProductImage[]
-    tag    String?
-    createdAt DateTime    @default(now())
-    updatedAt DateTime    @updatedAt
-    OrderItem OrderItem[]
+model ProductVideo {
+  id        String   @id @default(cuid())
+  productId String   @unique
+  url       String
+  publicId  String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-    @@index([categoryId])
-    @@index([subcategoryId])
-    @@index([qualityId])
+  @@map("product_videos")
 }
 
 model ProductImage {
-    id        String  @id @default(cuid())
-    productId String
-    product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-    publicId  String
-    url       String
-    rank      Int     @default(0)
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  publicId  String
+  url       String
+  rank      Int     @default(0)
 }
 
 model Payment {
-    id Int @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-    orderId String
-    order   Order  @relation(fields: [orderId], references: [id])
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id])
 
-    userId String
-    user   User   @relation(fields: [userId], references: [id])
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
-    amount        Float
-    paymentMethod PaymentMethod @default(cash_on_delivery)
-    paymentStatus PaymentStatus @default(Pending)
+  amount        Float
+  paymentMethod PaymentMethod @default(cash_on_delivery)
+  paymentStatus PaymentStatus @default(Pending)
 
-    razorpayOrderId   String @map("razorpay_order_id")
-    razorpayPaymentId String @map("razorpay_payment_id")
-    razorpaySignature String @map("razorpay_signature")
+  razorpayOrderId   String @map("razorpay_order_id")
+  razorpayPaymentId String @map("razorpay_payment_id")
+  razorpaySignature String @map("razorpay_signature")
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    @@index([orderId])
-    @@index([userId])
+  @@index([orderId])
+  @@index([userId])
 }
 
 model Category {
-    id            String        @id @default(cuid())
-    name          String        @unique
-    subcategories SubCategory[] // One-to-many relation
-
-    createdAt DateTime  @default(now())
-    updatedAt DateTime  @updatedAt
-    Product   Product[]
-    Size      Size[]
+  id            String        @id @default(cuid())
+  name          String        @unique
+  subcategories SubCategory[]
+ 
+  Size          Size[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 }
 
 model SubCategory {
-    id             String    @id @default(cuid())
-    name           String    @unique
-    parentCategory String
-    category       Category  @relation(fields: [parentCategory], references: [id])
-    Product        Product[]
+  id                String        @id @default(cuid())
+  name              String        @unique
+  parentCategory    String
+  category          Category      @relation(fields: [parentCategory], references: [id])
+  parentSubCategory String? // New field for nested subcategories
+  subCategory       SubCategory?  @relation("SubCategoryToSubCategory", fields: [parentSubCategory], references: [id])
+  children          SubCategory[] @relation("SubCategoryToSubCategory")
+ 
 }
 
 model Color {
-    id       String    @id @default(cuid())
-    name     String
-    products Product[]
+  id      String    @id @default(cuid())
+  name    String    @unique
+  Product Product[] @relation("ProductColors")
 
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Quality {
-    id   String @id @default(cuid())
-    name String
+  id   String @id @default(cuid())
+  name String
 
-    createdAt DateTime  @default(now())
-    updatedAt DateTime  @updatedAt
-    Product   Product[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
 
 model Size {
-    id         String    @id @default(cuid())
-    name       String
-    categoryId String?  
-    category   Category? @relation(fields: [categoryId], references: [id])
+  id         String    @id @default(cuid())
+  name       String
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
 
-    createdAt DateTime  @default(now())
-    updatedAt DateTime  @updatedAt
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

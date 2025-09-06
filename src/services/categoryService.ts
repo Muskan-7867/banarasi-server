@@ -28,7 +28,7 @@ export class CategoryService {
       include: {
         subcategories: true,
         Size: true,
-        Product: true,
+       
       },
     });
     return categories;
@@ -54,7 +54,7 @@ export class CategoryService {
       include: {
         subcategories: true,
         Size: true,
-        Product: true,
+      
       },
     });
     if (!category) {

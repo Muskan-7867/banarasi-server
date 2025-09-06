@@ -28,7 +28,7 @@ export class SubCategoryService {
     const SubCategories = await prisma.subCategory.findMany({
       include: {
         category: true,
-        Product: true,
+     
       },
     });
     return SubCategories;
@@ -52,7 +52,7 @@ export class SubCategoryService {
     const subcategories = await prisma.subCategory.findMany({
       where: { parentCategory: categoryId },
       include: {
-        Product: true,
+   
         category: true,
       },
     });
@@ -63,7 +63,7 @@ export class SubCategoryService {
     const SubCategory = await prisma.subCategory.findUnique({
       where: { id },
       include: {
-        Product: true,
+  
       },
     });
     if (!SubCategory) {

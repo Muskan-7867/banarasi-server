@@ -11,6 +11,8 @@ export interface ApiResponse<T = any> {
 export interface AuthTokenPayload {
   userId: string;
   email: string;
+  username?: string;
+  role?: "USER" | "ADMIN"; 
 }
 
 export interface RegisterRequest {
@@ -23,6 +25,7 @@ export interface RegisterRequest {
 export interface LoginRequest {
   email: string;
   password: string;
+  username: string;
 }
 export interface SizeCreateRequest {
   name: string;
@@ -223,22 +226,23 @@ export interface ProductCreateRequest {
   detailedDescription: string;
   price: number;
   originalPrice: number;
-  discount: number;
-  tax: number;
-  categoryId?: string;
-  subcategoryId?: string;
-  sizeId?: string;
-  qualityId?: string;
+  discount?: number;
+  tax?: number;
+  categoryName?: string;
+  subcategoryName?: string;
+  qualityName?: string;
+    
+  videoUrl    :        String,
+  videoPublicId    :   String,
+  sizeName?: string;
   colors: string[];
-  images: string[];
-  tag: string 
+  tag?: string;
 }
-
 export interface MulterRequest<P = any> extends Request<P> {
-  files?: Express.Multer.File[];
+files?: { [fieldname: string]: Express.Multer.File[] } | Express.Multer.File[];
 }
 
 
 export interface MulterRequest<P = any> extends Request<P> {
-  files?: Express.Multer.File[];
+ files?: { [fieldname: string]: Express.Multer.File[] } | Express.Multer.File[];
 }

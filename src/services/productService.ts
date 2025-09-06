@@ -1,11 +1,13 @@
 import { ProductCreateRequest } from "../types/index";
 import prisma from "../config/database";
 import {
-  uploadMultipleImages,
-  deleteMultipleImages
+  deleteMultipleImages,
+  uploadMultipleFiles,
+  uploadFile
 } from "../utils/cloudinary";
 import { ConflictError, NotFoundError, ValidationError } from "../utils/errors";
-import fs from "fs";
+
+
 export class productService {
   static async create(
     data: ProductCreateRequest,
@@ -19,9 +21,10 @@ export class productService {
       originalPrice,
       discount,
       tax,
-      categoryId,
-      subcategoryId,
-      qualityId,
+      categoryName,
+      subcategoryName,
+      qualityName,
+      sizeName,
       colors,
       tag
     } = data;
@@ -30,163 +33,160 @@ export class productService {
       !name ||
       !shortDescription ||
       !detailedDescription ||
-      !price ||
-      !originalPrice
+      price === undefined ||
+      originalPrice === undefined
     ) {
       throw new ValidationError("Missing required fields");
     }
 
-    // Check if product with same name exists
-    const existingProduct = await prisma.product.findFirst({
-      where: { name }
-    });
-
-    if (existingProduct) {
+    const existingProduct = await prisma.product.findFirst({ where: { name } });
+    if (existingProduct)
       throw new ConflictError("Product with this name already exists");
+
+    const imageFiles =
+      files?.filter((f) => f.mimetype.startsWith("image/")) || [];
+    const videoFile =
+      files?.find((f) => f.mimetype.startsWith("video/")) || null;
+
+    let uploadedImages: { public_id: string; secure_url: string }[] = [];
+    if (imageFiles.length) {
+      const filePaths = imageFiles.map((f) => f.path);
+      uploadedImages = await uploadMultipleFiles(filePaths, "products");
     }
 
-    let uploadedImages: any[] = [];
+    let uploadedVideo: { public_id: string; secure_url: string } | null = null;
+    if (videoFile) uploadedVideo = await uploadFile(videoFile.path, "products");
 
-    // Upload images to Cloudinary if files are provided
-    if (files && files.length > 0) {
-      try {
-        const filePaths = files.map((file) => file.path);
-        uploadedImages = await uploadMultipleImages(filePaths, "products");
-      } catch (error) {
-        throw new Error("Failed to upload images to Cloudinary");
-      }
-    }
-
-    // Create product with transaction
-    const product = await prisma.$transaction(async (tx) => {
-      // Validate foreign key relationships
-      if (categoryId) {
-        const categoryExists = await tx.category.findUnique({
-          where: { id: categoryId }
-        });
-        if (!categoryExists) {
-          throw new ValidationError(`Category with ID ${categoryId} not found`);
-        }
-      }
-
-      if (subcategoryId) {
-        const subcategoryExists = await tx.subCategory.findUnique({
-          where: { id: subcategoryId }
-        });
-        if (!subcategoryExists) {
-          throw new ValidationError(
-            `Subcategory with ID ${subcategoryId} not found`
-          );
-        }
-      }
-
-      if (qualityId) {
-        const qualityExists = await tx.quality.findUnique({
-          where: { id: qualityId }
-        });
-        if (!qualityExists) {
-          throw new ValidationError(`Quality with ID ${qualityId} not found`);
-        }
-      }
-
-      // Create the product
+    return await prisma.$transaction(async (tx) => {
       const newProduct = await tx.product.create({
         data: {
           name,
           shortDescription,
           detailedDescription,
-          price: parseFloat(price.toString()),
-          originalPrice: parseFloat(originalPrice.toString()),
-          discount: discount ? parseFloat(discount.toString()) : 0,
-          tax: tax ? parseFloat(tax.toString()) : 0,
-          categoryId: categoryId || null,
-          subcategoryId: subcategoryId || null,
-          qualityId: qualityId || null,
-          tag: tag
+          price: Number(price),
+          originalPrice: Number(originalPrice),
+          discount: discount ? Number(discount) : 0,
+          tax: tax ? Number(tax) : 0,
+          categoryName: categoryName || null,
+          subcategoryName: subcategoryName || null,
+          qualityName: qualityName || null,
+          sizeName: sizeName || null,
+          tag
         }
       });
 
-      // Create product images
       if (uploadedImages.length > 0) {
-        const imageData = uploadedImages.map((image, index) => ({
-          productId: newProduct.id,
-          publicId: image.public_id,
-          url: image.secure_url,
-          rank: index + 1
-        }));
-
         await tx.productImage.createMany({
-          data: imageData
+          data: uploadedImages.map((img, idx) => ({
+            productId: newProduct.id,
+            publicId: img.public_id,
+            url: img.secure_url,
+            rank: idx + 1
+          }))
         });
       }
 
-      // Connect colors if provided
-      if (colors && colors.length > 0) {
-        const colorIds = Array.isArray(colors) ? colors : [colors];
-
-        // Validate that all color IDs exist
-        const existingColors = await tx.color.findMany({
-          where: { id: { in: colorIds } },
-          select: { id: true }
+      if (uploadedVideo) {
+        await tx.productVideo.create({
+          data: {
+            productId: newProduct.id,
+            publicId: uploadedVideo.public_id,
+            url: uploadedVideo.secure_url
+            // Remove rank field since it doesn't exist in ProductVideo model
+          }
         });
+      }
 
-        const existingColorIds = existingColors.map((color) => color.id);
-        const invalidColorIds = colorIds.filter(
-          (id) => !existingColorIds.includes(id)
+      if (colors?.length) {
+        const colorList = (Array.isArray(colors) ? colors : [colors]).map((c) =>
+          c.includes(",") ? c.split(",")[1].trim() : c.trim()
         );
 
-        if (invalidColorIds.length > 0) {
-          throw new ValidationError(
-            `Invalid color IDs: ${invalidColorIds.join(", ")}`
+        const existingColors = await tx.color.findMany({
+          where: { name: { in: colorList } }
+        });
+        const existingNames = existingColors.map((c) => c.name);
+        const missingNames = colorList.filter(
+          (n) => !existingNames.includes(n)
+        );
+
+        if (missingNames.length > 0) {
+          const newColors = await Promise.all(
+            missingNames.map((name) => tx.color.create({ data: { name } }))
           );
+          existingColors.push(...newColors);
         }
 
         await tx.product.update({
           where: { id: newProduct.id },
           data: {
-            colors: {
-              connect: colorIds.map((colorId) => ({ id: colorId }))
-            }
+            colors: { connect: existingColors.map((c) => ({ id: c.id })) }
           }
         });
       }
 
-      // Return product with relations
-      return await tx.product.findUnique({
+      // Return product with images and videos
+      return tx.product.findUnique({
         where: { id: newProduct.id },
         include: {
-          category: true,
-          subcategory: true,
-          quality: true,
           colors: true,
-          images: true
+          images: { orderBy: { rank: "asc" } },
+          videos: true // Use createdAt instead of rank
         }
       });
     });
-
-    return product;
   }
 
- static async getCartProductsByIds(ids: string[]) {
+  static async getByTag(
+    tag: string,
+    filters?: {
+      size?: string;
+      color?: string;
+      minPrice?: number;
+      maxPrice?: number;
+    }
+  ) {
+    if (!tag) throw new Error("Tag is required");
+
+    const where: any = { tag };
+
+    if (filters?.size) where.sizeName = filters.size;
+    if (filters?.color) where.colors = { some: { name: filters.color } };
+    if (filters?.minPrice !== undefined || filters?.maxPrice !== undefined) {
+      where.price = {};
+      if (filters.minPrice !== undefined) where.price.gte = filters.minPrice;
+      if (filters.maxPrice !== undefined) where.price.lte = filters.maxPrice;
+    }
+
+    return prisma.product.findMany({
+      where,
+      include: {
+        colors: true,
+        images: { orderBy: { rank: "asc" } },
+        videos: true // Use createdAt instead of rank
+      },
+      orderBy: { createdAt: "desc" }
+    });
+  }
+
+  static async getCartProductsByIds(ids: string[]) {
     if (!ids || !Array.isArray(ids)) {
       throw new Error("IDs must be provided as an array");
     }
 
     const products = await prisma.product.findMany({
       where: {
-        id: { in: ids },
+        id: { in: ids }
       },
       include: {
-        category: true,
-        subcategory: true,
-        quality: true,
         colors: true,
-        images: true,
-      },
+        images: true
+      }
     });
 
     return products;
   }
+
   static async getAll(
     category?: string,
     search?: string,
@@ -196,7 +196,7 @@ export class productService {
     const where: any = {};
 
     if (category) {
-      where.categoryId = category;
+      where.categoryName = category; // Changed from categoryId to categoryName
     }
 
     if (search) {
@@ -216,11 +216,9 @@ export class productService {
         skip,
         take,
         include: {
-          category: true,
-          subcategory: true,
-          quality: true,
           colors: true,
-          images: { orderBy: { rank: "asc" } }
+          images: { orderBy: { rank: "asc" } },
+          videos: true // Added videos relation
         },
         orderBy: { createdAt: "desc" }
       }),
@@ -236,39 +234,15 @@ export class productService {
     };
   }
 
-  static async getByTag(tag: string) {
-    if (!tag) {
-      throw new Error("Tag is required");
-    }
-
-    const products = await prisma.product.findMany({
-      where: { tag },
-      include: {
-        category: true,
-        subcategory: true,
-        quality: true,
-        colors: true,
-        images: {
-          orderBy: { rank: "asc" }
-        }
-      },
-      orderBy: { createdAt: "desc" }
-    });
-
-    return products;
-  }
-
   static async getById(id: string) {
     const product = await prisma.product.findUnique({
       where: { id },
       include: {
-        category: true,
-        subcategory: true,
-        quality: true,
         colors: true,
         images: {
           orderBy: { rank: "asc" }
-        }
+        },
+        videos: true // Added videos to include
       }
     });
 
@@ -286,27 +260,52 @@ export class productService {
   ) {
     const product = await prisma.product.findUnique({
       where: { id },
-      include: { images: true }
+      include: {
+        images: true,
+        videos: true // Changed from video to videos
+      }
     });
 
-    if (!product) {
-      throw new NotFoundError("Product not found");
-    }
+    if (!product) throw new NotFoundError("Product not found");
 
     let uploadedImages: any[] = [];
+    let uploadedVideo: { public_id: string; secure_url: string } | null = null;
 
-    // Upload new images if files are provided
     if (files && files.length > 0) {
-      try {
-        const filePaths = files.map((file) => file.path);
-        uploadedImages = await uploadMultipleImages(filePaths, "products");
-      } catch (error) {
-        throw new Error("Failed to upload images to Cloudinary");
+      // Separate images and video
+      const imageFiles = files.filter((f) => f.mimetype.startsWith("image/"));
+      const videoFile = files.find((f) => f.mimetype.startsWith("video/"));
+
+      // Upload images
+      if (imageFiles.length > 0) {
+        const filePaths = imageFiles.map((f) => f.path);
+        try {
+          uploadedImages = await uploadMultipleFiles(filePaths, "products");
+        } catch {
+          throw new Error("Failed to upload images to Cloudinary");
+        }
+      }
+
+      // Upload video
+      if (videoFile) {
+        try {
+          uploadedVideo = await uploadFile(videoFile.path, "products");
+
+          // Delete old video if exists
+          if (product.videos && product.videos.length > 0) {
+            await deleteMultipleImages(product.videos.map((v) => v.publicId));
+            await prisma.productVideo.deleteMany({
+              where: { productId: id }
+            });
+          }
+        } catch {
+          throw new Error("Failed to upload video to Cloudinary");
+        }
       }
     }
 
     const updatedProduct = await prisma.$transaction(async (tx) => {
-      // Update product data
+      // Update product fields
       const updated = await tx.product.update({
         where: { id },
         data: {
@@ -317,94 +316,94 @@ export class productService {
           ...(data.detailedDescription && {
             detailedDescription: data.detailedDescription
           }),
-          ...(data.price && { price: parseFloat(data.price.toString()) }),
-          ...(data.originalPrice && {
-            originalPrice: parseFloat(data.originalPrice.toString())
+          ...(data.price !== undefined && { price: Number(data.price) }),
+          ...(data.originalPrice !== undefined && {
+            originalPrice: Number(data.originalPrice)
           }),
           ...(data.discount !== undefined && {
-            discount: parseFloat(data.discount.toString())
+            discount: Number(data.discount)
           }),
-          ...(data.tax !== undefined && {
-            tax: parseFloat(data.tax.toString())
+          ...(data.tax !== undefined && { tax: Number(data.tax) }),
+          ...(data.categoryName !== undefined && {
+            categoryName: data.categoryName
           }),
-          ...(data.categoryId !== undefined && { categoryId: data.categoryId }),
-          ...(data.subcategoryId !== undefined && {
-            subcategoryId: data.subcategoryId
+          ...(data.subcategoryName !== undefined && {
+            subcategoryName: data.subcategoryName
           }),
-          ...(data.qualityId !== undefined && { qualityId: data.qualityId }),
+          ...(data.qualityName !== undefined && {
+            qualityName: data.qualityName
+          }),
+          ...(data.sizeName !== undefined && { sizeName: data.sizeName }),
           ...(data.tag !== undefined && { tag: data.tag })
         }
       });
 
-      // Handle new images
+      // Handle images
       if (uploadedImages.length > 0) {
-        // Delete old images from Cloudinary
         if (product.images.length > 0) {
           const publicIds = product.images.map((img) => img.publicId);
           await deleteMultipleImages(publicIds);
         }
-
-        // Delete old image records
-        await tx.productImage.deleteMany({
-          where: { productId: id }
-        });
-
-        // Create new image records
-        const imageData = uploadedImages.map((image, index) => ({
-          productId: id,
-          publicId: image.public_id,
-          url: image.secure_url,
-          rank: index + 1
-        }));
+        await tx.productImage.deleteMany({ where: { productId: id } });
 
         await tx.productImage.createMany({
-          data: imageData
+          data: uploadedImages.map((image, idx) => ({
+            productId: id,
+            publicId: image.public_id,
+            url: image.secure_url,
+            rank: idx + 1
+          }))
         });
       }
 
-      // Update colors if provided
+      // Handle video
+      if (uploadedVideo) {
+        await tx.productVideo.create({
+          data: {
+            productId: id,
+            publicId: uploadedVideo.public_id,
+            url: uploadedVideo.secure_url
+          }
+        });
+      }
+
+      // Handle colors
       if (data.colors) {
-        const colorIds = Array.isArray(data.colors)
+        const colorList = Array.isArray(data.colors)
           ? data.colors
           : [data.colors];
 
-        // Validate that all color IDs exist
         const existingColors = await tx.color.findMany({
-          where: { id: { in: colorIds } },
-          select: { id: true }
+          where: { name: { in: colorList } }
         });
+        const existingNames = existingColors.map((c) => c.name);
 
-        const existingColorIds = existingColors.map((color) => color.id);
-        const invalidColorIds = colorIds.filter(
-          (id) => !existingColorIds.includes(id)
+        const missingNames = colorList.filter(
+          (n) => !existingNames.includes(n)
+        );
+        const newColors = await Promise.all(
+          missingNames.map((name) => tx.color.create({ data: { name } }))
         );
 
-        if (invalidColorIds.length > 0) {
-          throw new ValidationError(
-            `Invalid color IDs: ${invalidColorIds.join(", ")}`
-          );
-        }
+        const allColors = [...existingColors, ...newColors];
 
         await tx.product.update({
           where: { id },
           data: {
             colors: {
-              set: colorIds.map((colorId) => ({ id: colorId }))
+              set: [], // remove old associations
+              connect: allColors.map((c) => ({ id: c.id }))
             }
           }
         });
       }
 
-      return await tx.product.findUnique({
+      return tx.product.findUnique({
         where: { id },
         include: {
-          category: true,
-          subcategory: true,
-          quality: true,
           colors: true,
-          images: {
-            orderBy: { rank: "asc" }
-          }
+          images: { orderBy: { rank: "asc" } },
+          videos: true // Changed from video to videos
         }
       });
     });
@@ -415,7 +414,10 @@ export class productService {
   static async delete(id: string) {
     const product = await prisma.product.findUnique({
       where: { id },
-      include: { images: true }
+      include: {
+        images: true,
+        videos: true // Include videos to delete them from Cloudinary
+      }
     });
 
     if (!product) {
@@ -428,9 +430,97 @@ export class productService {
       await deleteMultipleImages(publicIds);
     }
 
-    // Delete product (images will be deleted due to cascade)
+    // Delete videos from Cloudinary
+    if (product.videos.length > 0) {
+      const videoPublicIds = product.videos.map((video) => video.publicId);
+      await deleteMultipleImages(videoPublicIds);
+    }
+
+    // Delete product (images and videos will be deleted due to cascade)
     await prisma.product.delete({
       where: { id }
     });
+  }
+
+  // static async getByCategory(category: string, filters: any) {
+  //   return prisma.product.findMany({
+  //     where: {
+  //       categoryName: category,
+  //       ...(filters.color && { colors: { some: { name: filters.color } } }),
+  //       ...(filters.size && { sizeName: filters.size }), // ✅ use scalar field
+  //       ...(filters.minPrice &&
+  //         filters.maxPrice && {
+  //           price: { gte: Number(filters.minPrice), lte: Number(filters.maxPrice) },
+  //         }),
+  //     },
+  //     include: {
+  //       colors: true,
+  //       images: { orderBy: { rank: "asc" } },
+  //       videos: true,
+  //     },
+  //     orderBy: { createdAt: "desc" },
+  //   });
+  // }
+  static async getByCategory(
+    category: string,
+    filters: {
+      size?: string;
+      color?: string;
+      minPrice?: number;
+      maxPrice?: number;
+      page?: number;
+      limit?: number;
+    }
+  ) {
+    const where: any = {
+      categoryName: category
+    };
+
+    // size filter
+    if (filters.size) {
+      where.sizeName = filters.size;
+    }
+
+    // color filter (relation check)
+    if (filters.color) {
+      where.colors = { some: { name: filters.color } };
+    }
+
+    // price filters
+    if (filters.minPrice !== undefined || filters.maxPrice !== undefined) {
+      where.price = {};
+      if (filters.minPrice !== undefined)
+        where.price.gte = Number(filters.minPrice);
+      if (filters.maxPrice !== undefined)
+        where.price.lte = Number(filters.maxPrice);
+    }
+
+    // pagination defaults
+    const page = filters.page || 1;
+    const limit = filters.limit || 16;
+    const skip = (page - 1) * limit;
+
+    const [products, total] = await Promise.all([
+      prisma.product.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          colors: true,
+          images: { orderBy: { rank: "asc" } },
+          videos: true
+        },
+        orderBy: { createdAt: "desc" }
+      }),
+      prisma.product.count({ where })
+    ]);
+
+    return {
+      products,
+      total,
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
+      pageSize: limit
+    };
   }
 }
