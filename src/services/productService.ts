@@ -524,73 +524,7 @@ static async getByCategory(
     };
   }
 
-static async getWomenProductsByTag(
-  tag: string,
-  
-  filters: {
-    size?: string;
-    color?: string;
-    minPrice?: number;
-    maxPrice?: number;
-    page?: number;
-    limit?: number;
-    
-  }
-) {
-  if (!tag) throw new Error("Tag is required");
 
-  const where: any = {
-    tag: {
-      equals: tag,
-      
-    },
-    categoryName: "Women",
-  };
-//  if (filters.subtag) {
-//     where.subTag = { equals: filters.subtag }; // assuming your DB has a `subTag` field
-//   }
-
-  if (filters.size) {
-    where.sizeName = filters.size;
-  }
-
-  if (filters.color) {
-    where.colors = { some: { name: filters.color } };
-  }
-
-  if (filters.minPrice !== undefined || filters.maxPrice !== undefined) {
-    where.price = {};
-    if (filters.minPrice !== undefined) where.price.gte = filters.minPrice;
-    if (filters.maxPrice !== undefined) where.price.lte = filters.maxPrice;
-  }
-
-  const page = filters.page ?? 1;
-  const limit = filters.limit ?? 16;
-  const skip = (page - 1) * limit;
-
-  const [products, total] = await Promise.all([
-    prisma.product.findMany({
-      where,
-      skip,
-      take: limit,
-      include: {
-        colors: true,
-        images: { orderBy: { rank: "asc" } },
-        videos: true,
-      },
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.product.count({ where }),
-  ]);
-
-  return {
-    products,
-    total,
-    currentPage: page,
-    totalPages: Math.ceil(total / limit),
-    pageSize: limit,
-  };
-}
 
 
 

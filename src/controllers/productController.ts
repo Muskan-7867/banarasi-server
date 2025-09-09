@@ -245,36 +245,6 @@ static async getProductsByCategory(req: Request, res: Response) {
     }
   }
 
-static async getWomenProductsByTag(req: Request, res: Response) {
-  try {
-    const { tag } = req.query;
 
-    if (!tag || typeof tag !== "string") {
-      return res.status(400).json({ error: "Tag is required" });
-    }
-
-    const filters = {
-      size: req.query.size as string,
-      color: req.query.color as string,
-      minPrice: req.query.minPrice ? Number(req.query.minPrice) : undefined,
-      maxPrice: req.query.maxPrice ? Number(req.query.maxPrice) : undefined,
-      page: req.query.page ? Number(req.query.page) : undefined,
-      limit: req.query.limit ? Number(req.query.limit) : undefined,
-    };
-
-    const result = await productService.getWomenProductsByTag(tag, filters);
-
-    return res.status(200).json({
-      success: true,
-      message: "Women products fetched successfully",
-      data: result,
-    });
-  } catch (error: any) {
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Something went wrong",
-    });
-  }
-}
 
 }

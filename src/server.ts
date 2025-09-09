@@ -1,7 +1,7 @@
 import app from "./app";
 import prisma from "./config/database";
 
-const PORT = process.env.PORT 
+const PORT = 3002;
 
 // Graceful shutdown
 const gracefulShutdown = async (): Promise<void> => {
@@ -24,7 +24,7 @@ process.on("SIGINT", gracefulShutdown);
 // Start server
 const server = app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📝 Environment: ${process.env.NODE_ENV || "development"}`);
+  console.log(`📝 Environment: ${ "development"}`);
   console.log(`🔗 Health check: http://localhost:${PORT}/api/v1/health`);
 });
 

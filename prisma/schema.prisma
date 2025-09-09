@@ -124,7 +124,7 @@ model Product {
   images ProductImage[]
 
   videos ProductVideo[]
-  subtag      String?
+  
 }
 
 model ProductVideo {
