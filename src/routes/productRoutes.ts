@@ -29,4 +29,7 @@ router.post("/cartproducts", productController.getCartProducts);
 router.get("/filter", productController.getProductByTag);
 router.get('/category/:category', productController.getProductsByCategory);
 
+router.get("/women/products/tag", productController.getWomenProductsByTag);
+
+
 export default router;

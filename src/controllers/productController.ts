@@ -40,70 +40,70 @@ static async create(req: Request, res: Response, next: NextFunction): Promise<vo
 }
 
 
-  //  static async getProductByTag(
-  //   req: Request,
-  //   res: Response,
-  //   next: NextFunction
-  // ) {
-  //   try {
-  //     const { tag } = req.params;
-  //     const products = await productService.getByTag(tag);
-
-  //     if (!products || products.length === 0) {
-  //       return res
-  //         .status(404)
-  //         .json({ message: `No products found for tag: ${tag}` });
-  //     }
-
-  //     return res.status(200).json(products);
-  //   } catch (error) {
-  //     return next(error);
-  //   }
-  // }
-
-  static async getProductByTag(
+   static async getProductByTag(
     req: Request,
     res: Response,
     next: NextFunction
   ) {
     try {
       const { tag } = req.params;
-      const { size, color, priceRange, minPrice, maxPrice } = req.query;
+      const products = await productService.getByTag(tag);
 
-      let filter: any = {
-        size: size as string,
-        color: color as string
-      };
-
-      // 🎚️ Dual slider values
-      if (minPrice || maxPrice) {
-        filter.minPrice = minPrice ? Number(minPrice) : undefined;
-        filter.maxPrice = maxPrice ? Number(maxPrice) : undefined;
+      if (!products || products.length === 0) {
+        return res
+          .status(404)
+          .json({ message: `No products found for tag: ${tag}` });
       }
-
-      // 🎯 Dropdown fallback
-      if (priceRange) {
-        switch (priceRange) {
-          case "Under 50K":
-            filter.maxPrice = 50000;
-            break;
-          case "50K - 150K":
-            filter.minPrice = 50000;
-            filter.maxPrice = 150000;
-            break;
-          case "150K and above":
-            filter.minPrice = 150000;
-            break;
-        }
-      }
-
-      const products = await productService.getByTag(tag, filter);
 
       return res.status(200).json(products);
     } catch (error) {
       return next(error);
     }
   }
+
+  // static async getProductByTag(
+  //   req: Request,
+  //   res: Response,
+  //   next: NextFunction
+  // ) {
+  //   try {
+  //     const { tag } = req.params;
+  //     const { size, color, priceRange, minPrice, maxPrice } = req.query;
+
+  //     let filter: any = {
+  //       size: size as string,
+  //       color: color as string
+  //     };
+
+  //     // 🎚️ Dual slider values
+  //     if (minPrice || maxPrice) {
+  //       filter.minPrice = minPrice ? Number(minPrice) : undefined;
+  //       filter.maxPrice = maxPrice ? Number(maxPrice) : undefined;
+  //     }
+
+  //     // 🎯 Dropdown fallback
+  //     if (priceRange) {
+  //       switch (priceRange) {
+  //         case "Under 50K":
+  //           filter.maxPrice = 50000;
+  //           break;
+  //         case "50K - 150K":
+  //           filter.minPrice = 50000;
+  //           filter.maxPrice = 150000;
+  //           break;
+  //         case "150K and above":
+  //           filter.minPrice = 150000;
+  //           break;
+  //       }
+  //     }
+
+  //     const products = await productService.getByTag(tag, filter);
+
+  //     return res.status(200).json(products);
+  //   } catch (error) {
+  //     return next(error);
+  //   }
+  // }
 
   static async getCartProducts(
     req: Request,
@@ -245,6 +245,36 @@ static async getProductsByCategory(req: Request, res: Response) {
     }
   }
 
+static async getWomenProductsByTag(req: Request, res: Response) {
+  try {
+    const { tag } = req.query;
 
+    if (!tag || typeof tag !== "string") {
+      return res.status(400).json({ error: "Tag is required" });
+    }
+
+    const filters = {
+      size: req.query.size as string,
+      color: req.query.color as string,
+      minPrice: req.query.minPrice ? Number(req.query.minPrice) : undefined,
+      maxPrice: req.query.maxPrice ? Number(req.query.maxPrice) : undefined,
+      page: req.query.page ? Number(req.query.page) : undefined,
+      limit: req.query.limit ? Number(req.query.limit) : undefined,
+    };
+
+    const result = await productService.getWomenProductsByTag(tag, filters);
+
+    return res.status(200).json({
+      success: true,
+      message: "Women products fetched successfully",
+      data: result,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Something went wrong",
+    });
+  }
+}
 
 }

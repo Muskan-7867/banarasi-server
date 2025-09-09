@@ -1,6 +1,5 @@
 generator client {
-  provider      = "prisma-client-js"
-
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -103,10 +102,10 @@ model OrderItem {
 }
 
 model Product {
-  id                  String   @id @default(uuid())
+  id                  String  @id @default(uuid())
   name                String
   shortDescription    String
-  detailedDescription String @db.LongText
+  detailedDescription String  @db.LongText
   price               Float
   originalPrice       Float
   discount            Float?
@@ -118,23 +117,22 @@ model Product {
   qualityName         String?
   sizeName            String?
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
+  colors Color[]        @relation("ProductColors")
+  images ProductImage[]
 
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  
-  colors              Color[]  @relation("ProductColors")
-  images              ProductImage[]
-
-  videos    ProductVideo[]
+  videos ProductVideo[]
+  subtag      String?
 }
 
 model ProductVideo {
-  id        String   @id @default(cuid())
-  productId String   @unique
+  id        String  @id @default(cuid())
+  productId String  @unique
   url       String
   publicId  String
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@map("product_videos")
 }
@@ -176,10 +174,10 @@ model Category {
   id            String        @id @default(cuid())
   name          String        @unique
   subcategories SubCategory[]
- 
-  Size          Size[]
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+
+  Size      Size[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model SubCategory {
@@ -190,7 +188,6 @@ model SubCategory {
   parentSubCategory String? // New field for nested subcategories
   subCategory       SubCategory?  @relation("SubCategoryToSubCategory", fields: [parentSubCategory], references: [id])
   children          SubCategory[] @relation("SubCategoryToSubCategory")
- 
 }
 
 model Color {
@@ -206,9 +203,8 @@ model Quality {
   id   String @id @default(cuid())
   name String
 
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Size {
@@ -216,7 +212,6 @@ model Size {
   name       String
   categoryId String?
   category   Category? @relation(fields: [categoryId], references: [id])
-
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

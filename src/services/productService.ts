@@ -9,150 +9,151 @@ import { ConflictError, NotFoundError, ValidationError } from "../utils/errors";
 import fs from "fs/promises";
 
 export class productService {
+  static async create(
+    data: ProductCreateRequest,
+    files?: Express.Multer.File[]
+  ): Promise<any> {
+    const {
+      name,
+      shortDescription,
+      detailedDescription,
+      price,
+      originalPrice,
+      discount,
+      tax,
+      categoryName,
+      subcategoryName,
+      qualityName,
+      sizeName,
+      colors,
+      tag
+    } = data;
 
-
-static async create(
-  data: ProductCreateRequest,
-  files?: Express.Multer.File[]
-): Promise<any> {
-  const {
-    name,
-    shortDescription,
-    detailedDescription,
-    price,
-    originalPrice,
-    discount,
-    tax,
-    categoryName,
-    subcategoryName,
-    qualityName,
-    sizeName,
-    colors,
-    tag
-  } = data;
-
-  if (
-    !name ||
-    !shortDescription ||
-    !detailedDescription ||
-    price === undefined ||
-    originalPrice === undefined
-  ) {
-    throw new ValidationError("Missing required fields");
-  }
-
-  const existingProduct = await prisma.product.findFirst({ where: { name } });
-  if (existingProduct)
-    throw new ConflictError("Product with this name already exists");
-
-  const imageFiles = files?.filter((f) => f.mimetype.startsWith("image/")) || [];
-  const videoFile = files?.find((f) => f.mimetype.startsWith("video/")) || null;
-
-  let uploadedImages: { public_id: string; secure_url: string }[] = [];
-  let uploadedVideo: { public_id: string; secure_url: string } | null = null;
-
-  try {
-    // Upload images
-    if (imageFiles.length) {
-      const filePaths = imageFiles.map((f) => f.path);
-      uploadedImages = await uploadMultipleFiles(filePaths, "products");
-
-      // Clean temp files
-      await Promise.all(filePaths.map((path) => fs.unlink(path)));
+    if (
+      !name ||
+      !shortDescription ||
+      !detailedDescription ||
+      price === undefined ||
+      originalPrice === undefined
+    ) {
+      throw new ValidationError("Missing required fields");
     }
 
-    // Upload video
-    if (videoFile) {
-      uploadedVideo = await uploadFile(videoFile.path, "products");
+    const existingProduct = await prisma.product.findFirst({ where: { name } });
+    if (existingProduct)
+      throw new ConflictError("Product with this name already exists");
 
-      // Clean temp file
-      await fs.unlink(videoFile.path);
-    }
-  } catch (err) {
-    // In case upload fails, try to cleanup temp files
-    await Promise.allSettled([
-      ...(imageFiles || []).map((f) => fs.unlink(f.path)),
-      videoFile ? fs.unlink(videoFile.path) : Promise.resolve()
-    ]);
-    throw err;
-  }
+    const imageFiles =
+      files?.filter((f) => f.mimetype.startsWith("image/")) || [];
+    const videoFile =
+      files?.find((f) => f.mimetype.startsWith("video/")) || null;
 
-  return await prisma.$transaction(async (tx) => {
-    const newProduct = await tx.product.create({
-      data: {
-        name,
-        shortDescription,
-        detailedDescription,
-        price: Number(price),
-        originalPrice: Number(originalPrice),
-        discount: discount ? Number(discount) : 0,
-        tax: tax ? Number(tax) : 0,
-        categoryName: categoryName || null,
-        subcategoryName: subcategoryName || null,
-        qualityName: qualityName || null,
-        sizeName: sizeName || null,
-        tag
+    let uploadedImages: { public_id: string; secure_url: string }[] = [];
+    let uploadedVideo: { public_id: string; secure_url: string } | null = null;
+
+    try {
+      // Upload images
+      if (imageFiles.length) {
+        const filePaths = imageFiles.map((f) => f.path);
+        uploadedImages = await uploadMultipleFiles(filePaths, "products");
+
+        // Clean temp files
+        await Promise.all(filePaths.map((path) => fs.unlink(path)));
       }
-    });
 
-    if (uploadedImages.length > 0) {
-      await tx.productImage.createMany({
-        data: uploadedImages.map((img, idx) => ({
-          productId: newProduct.id,
-          publicId: img.public_id,
-          url: img.secure_url,
-          rank: idx + 1
-        }))
-      });
+      // Upload video
+      if (videoFile) {
+        uploadedVideo = await uploadFile(videoFile.path, "products");
+
+        // Clean temp file
+        await fs.unlink(videoFile.path);
+      }
+    } catch (err) {
+      // In case upload fails, try to cleanup temp files
+      await Promise.allSettled([
+        ...(imageFiles || []).map((f) => fs.unlink(f.path)),
+        videoFile ? fs.unlink(videoFile.path) : Promise.resolve()
+      ]);
+      throw err;
     }
 
-    if (uploadedVideo) {
-      await tx.productVideo.create({
+    return await prisma.$transaction(async (tx) => {
+      const newProduct = await tx.product.create({
         data: {
-          productId: newProduct.id,
-          publicId: uploadedVideo.public_id,
-          url: uploadedVideo.secure_url
+          name,
+          shortDescription,
+          detailedDescription,
+          price: Number(price),
+          originalPrice: Number(originalPrice),
+          discount: discount ? Number(discount) : 0,
+          tax: tax ? Number(tax) : 0,
+          categoryName: categoryName || null,
+          subcategoryName: subcategoryName || null,
+          qualityName: qualityName || null,
+          sizeName: sizeName || null,
+          tag
         }
       });
-    }
 
-    if (colors?.length) {
-      const colorList = (Array.isArray(colors) ? colors : [colors]).map((c) =>
-        c.includes(",") ? c.split(",")[1].trim() : c.trim()
-      );
+      if (uploadedImages.length > 0) {
+        await tx.productImage.createMany({
+          data: uploadedImages.map((img, idx) => ({
+            productId: newProduct.id,
+            publicId: img.public_id,
+            url: img.secure_url,
+            rank: idx + 1
+          }))
+        });
+      }
 
-      const existingColors = await tx.color.findMany({
-        where: { name: { in: colorList } }
-      });
-      const existingNames = existingColors.map((c) => c.name);
-      const missingNames = colorList.filter((n) => !existingNames.includes(n));
+      if (uploadedVideo) {
+        await tx.productVideo.create({
+          data: {
+            productId: newProduct.id,
+            publicId: uploadedVideo.public_id,
+            url: uploadedVideo.secure_url
+          }
+        });
+      }
 
-      if (missingNames.length > 0) {
-        const newColors = await Promise.all(
-          missingNames.map((name) => tx.color.create({ data: { name } }))
+      if (colors?.length) {
+        const colorList = (Array.isArray(colors) ? colors : [colors]).map((c) =>
+          c.includes(",") ? c.split(",")[1].trim() : c.trim()
         );
-        existingColors.push(...newColors);
+
+        const existingColors = await tx.color.findMany({
+          where: { name: { in: colorList } }
+        });
+        const existingNames = existingColors.map((c) => c.name);
+        const missingNames = colorList.filter(
+          (n) => !existingNames.includes(n)
+        );
+
+        if (missingNames.length > 0) {
+          const newColors = await Promise.all(
+            missingNames.map((name) => tx.color.create({ data: { name } }))
+          );
+          existingColors.push(...newColors);
+        }
+
+        await tx.product.update({
+          where: { id: newProduct.id },
+          data: {
+            colors: { connect: existingColors.map((c) => ({ id: c.id })) }
+          }
+        });
       }
 
-      await tx.product.update({
+      return tx.product.findUnique({
         where: { id: newProduct.id },
-        data: {
-          colors: { connect: existingColors.map((c) => ({ id: c.id })) }
+        include: {
+          colors: true,
+          images: { orderBy: { rank: "asc" } },
+          videos: true
         }
       });
-    }
-
-    return tx.product.findUnique({
-      where: { id: newProduct.id },
-      include: {
-        colors: true,
-        images: { orderBy: { rank: "asc" } },
-        videos: true
-      }
     });
-  });
-}
-
+  }
 
   static async getByTag(
     tag: string,
@@ -459,26 +460,8 @@ static async create(
     });
   }
 
-  // static async getByCategory(category: string, filters: any) {
-  //   return prisma.product.findMany({
-  //     where: {
-  //       categoryName: category,
-  //       ...(filters.color && { colors: { some: { name: filters.color } } }),
-  //       ...(filters.size && { sizeName: filters.size }), // ✅ use scalar field
-  //       ...(filters.minPrice &&
-  //         filters.maxPrice && {
-  //           price: { gte: Number(filters.minPrice), lte: Number(filters.maxPrice) },
-  //         }),
-  //     },
-  //     include: {
-  //       colors: true,
-  //       images: { orderBy: { rank: "asc" } },
-  //       videos: true,
-  //     },
-  //     orderBy: { createdAt: "desc" },
-  //   });
-  // }
-  static async getByCategory(
+
+static async getByCategory(
     category: string,
     filters: {
       size?: string;
@@ -540,4 +523,75 @@ static async create(
       pageSize: limit
     };
   }
+
+static async getWomenProductsByTag(
+  tag: string,
+  
+  filters: {
+    size?: string;
+    color?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    page?: number;
+    limit?: number;
+    
+  }
+) {
+  if (!tag) throw new Error("Tag is required");
+
+  const where: any = {
+    tag: {
+      equals: tag,
+      
+    },
+    categoryName: "Women",
+  };
+//  if (filters.subtag) {
+//     where.subTag = { equals: filters.subtag }; // assuming your DB has a `subTag` field
+//   }
+
+  if (filters.size) {
+    where.sizeName = filters.size;
+  }
+
+  if (filters.color) {
+    where.colors = { some: { name: filters.color } };
+  }
+
+  if (filters.minPrice !== undefined || filters.maxPrice !== undefined) {
+    where.price = {};
+    if (filters.minPrice !== undefined) where.price.gte = filters.minPrice;
+    if (filters.maxPrice !== undefined) where.price.lte = filters.maxPrice;
+  }
+
+  const page = filters.page ?? 1;
+  const limit = filters.limit ?? 16;
+  const skip = (page - 1) * limit;
+
+  const [products, total] = await Promise.all([
+    prisma.product.findMany({
+      where,
+      skip,
+      take: limit,
+      include: {
+        colors: true,
+        images: { orderBy: { rank: "asc" } },
+        videos: true,
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.product.count({ where }),
+  ]);
+
+  return {
+    products,
+    total,
+    currentPage: page,
+    totalPages: Math.ceil(total / limit),
+    pageSize: limit,
+  };
+}
+
+
+
 }

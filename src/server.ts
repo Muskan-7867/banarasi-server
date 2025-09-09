@@ -1,7 +1,7 @@
 import app from "./app";
 import prisma from "./config/database";
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT 
 
 // Graceful shutdown
 const gracefulShutdown = async (): Promise<void> => {
