@@ -155,37 +155,48 @@ export class productService {
     });
   }
 
-  static async getByTag(
-    tag: string,
-    filters?: {
-      size?: string;
-      color?: string;
-      minPrice?: number;
-      maxPrice?: number;
-    }
-  ) {
-    if (!tag) throw new Error("Tag is required");
-
-    const where: any = { tag };
-
-    if (filters?.size) where.sizeName = filters.size;
-    if (filters?.color) where.colors = { some: { name: filters.color } };
-    if (filters?.minPrice !== undefined || filters?.maxPrice !== undefined) {
-      where.price = {};
-      if (filters.minPrice !== undefined) where.price.gte = filters.minPrice;
-      if (filters.maxPrice !== undefined) where.price.lte = filters.maxPrice;
-    }
-
-    return prisma.product.findMany({
-      where,
-      include: {
-        colors: true,
-        images: { orderBy: { rank: "asc" } },
-        videos: true // Use createdAt instead of rank
-      },
-      orderBy: { createdAt: "desc" }
-    });
+static async getByTag(
+  tag: string,
+  filters?: {
+    size?: string;
+    color?: string;
+    minPrice?: number;
+    maxPrice?: number;
   }
+) {
+  if (!tag) throw new Error("Tag is required");
+
+  const where: any = {
+    tag: { equals: tag.toLowerCase() },
+  };
+
+  if (filters?.size) {
+    where.sizeName = { equals: filters.size.toLowerCase() };
+  }
+
+  if (filters?.color) {
+    where.colors = {
+      some: { name: { equals: filters.color.toLowerCase() } },
+    };
+  }
+
+  if (filters?.minPrice !== undefined || filters?.maxPrice !== undefined) {
+    where.price = {};
+    if (filters.minPrice !== undefined) where.price.gte = filters.minPrice;
+    if (filters.maxPrice !== undefined) where.price.lte = filters.maxPrice;
+  }
+
+  return prisma.product.findMany({
+    where,
+    include: {
+      colors: true,
+      images: { orderBy: { rank: "asc" } },
+      videos: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
 
   static async getCartProductsByIds(ids: string[]) {
     if (!ids || !Array.isArray(ids)) {
@@ -460,8 +471,7 @@ export class productService {
     });
   }
 
-
-static async getByCategory(
+  static async getByCategory(
     category: string,
     filters: {
       size?: string;
@@ -523,9 +533,4 @@ static async getByCategory(
       pageSize: limit
     };
   }
-
-
-
-
-
 }
